@@ -43,6 +43,23 @@ _RESTRICCIONES: dict[str, tuple[type[ErrorDominio], str, str]] = {
         "USUARIO_INVALIDO",
         "El usuario debe tener de 3 a 64 caracteres: letras, números, punto, guion, guion bajo o @.",
     ),
+    # trampas y su ubicación
+    "trampa_tram_codigo_key": (Conflicto, "CODIGO_TRAMPA_DUPLICADO", "Duplicidad de código de trampa."),
+    "trampa_codigo_formato": (
+        ReglaNegocio,
+        "CODIGO_TRAMPA_INVALIDO",
+        "El código debe tener el formato Divipola-ruta-número, por ejemplo 54518-602-001",
+    ),
+    "ubicacion_trampa_sin_solape": (
+        Conflicto,
+        "UBICACION_SOLAPADA",
+        "La trampa ya tiene una ubicación en ese periodo.",
+    ),
+    "ubicacion_trampa_vigencia_valida": (
+        ReglaNegocio,
+        "UBICACION_FECHA_INVALIDA",
+        "La nueva ubicación debe empezar después de la ubicación vigente.",
+    ),
     "centro_acopio_cent_descripcion_key": (
         Conflicto,
         "DUPLICADO",

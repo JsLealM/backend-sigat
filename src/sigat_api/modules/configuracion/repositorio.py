@@ -3,6 +3,7 @@ fn_lote_app(usua), fn_trampa_app(usua), fn_lote_que_contiene(punto, instante).""
 
 import json
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -233,6 +234,100 @@ SELECT t.tram_id,
             {"lon": lon, "lat": lat, "instante": instante},
         )
         return int(valor) if valor is not None else None
+
+    async def tipo_trampa(self, tipt_id: int) -> dict[str, Any] | None:
+        """Tipo de trampa con la paridad que exige al número (RN-005). None si no existe."""
+        fila = (
+            (
+                await self._con.execute(
+                    text(
+                        "SELECT tipt_id, tipt_descripcion, tipt_paridad FROM sigat.tipo_trampa"
+                        " WHERE tipt_id = :tipt_id"
+                    ),
+                    {"tipt_id": tipt_id},
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return dict(fila) if fila is not None else None
+
+    async def existe_codigo_trampa(self, tram_codigo: str) -> bool:
+        """El código ICA es único en todo el catálogo (``trampa_tram_codigo_key``)."""
+        return bool(
+            await self._con.scalar(
+                text("SELECT EXISTS (SELECT 1 FROM sigat.trampa WHERE tram_codigo = :codigo)"),
+                {"codigo": tram_codigo},
+            )
+        )
+
+    async def predio_del_lote(self, lote_id: int) -> int | None:
+        """``ubicacion_trampa.pred_id`` sale del lote (FK compuesta lote_id, pred_id)."""
+        valor = await self._con.scalar(
+            text("SELECT pred_id FROM sigat.lote WHERE lote_id = :lote_id"), {"lote_id": lote_id}
+        )
+        return int(valor) if valor is not None else None
+
+    async def distancia_minima_trampas(self, pred_id: int, fecha: date) -> int | None:
+        """RN-004: ``prog_distancia_min_trampas_m`` del programa vigente en ``fecha``.
+
+        Vigencia [desde, hasta). None si el predio no tiene programa vigente en esa fecha.
+        """
+        valor = await self._con.scalar(
+            text(
+                """
+SELECT prog_distancia_min_trampas_m
+  FROM sigat.programa_inspeccion
+ WHERE pred_id = :pred_id
+   AND prog_vigente_desde <= :fecha
+   AND (prog_vigente_hasta IS NULL OR prog_vigente_hasta > :fecha)
+"""
+            ),
+            {"pred_id": pred_id, "fecha": fecha},
+        )
+        return int(valor) if valor is not None else None
+
+    async def trampas_cercanas(
+        self,
+        pred_id: int,
+        lon: Decimal,
+        lat: Decimal,
+        fecha: date,
+        distancia_m: int,
+        excluir_tram_id: int | None = None,
+    ) -> list[str]:
+        """Códigos de las trampas del predio a menos de ``distancia_m`` del punto (RN-004).
+
+        La BD no hace cumplir esta regla para trampas (solo para la retícula), por eso se consulta
+        aquí. Cuenta las ubicaciones que siguen vigentes desde ``fecha``. La distancia se mide en
+        metros sobre ``geography``. ``excluir_tram_id`` deja fuera a la propia trampa al reubicarla.
+        """
+        filas = await self._con.execute(
+            text(
+                """
+SELECT t.tram_codigo
+  FROM sigat.ubicacion_trampa u
+  JOIN sigat.trampa t ON t.tram_id = u.tram_id
+ WHERE u.pred_id = :pred_id
+   AND (u.ubic_fecha_fin IS NULL OR u.ubic_fecha_fin > :fecha)
+   AND (CAST(:excluir AS integer) IS NULL OR u.tram_id <> CAST(:excluir AS integer))
+   AND ST_Distance(
+         CAST(u.ubic_geom AS geography),
+         CAST(ST_SetSRID(ST_MakePoint(CAST(:lon AS float8), CAST(:lat AS float8)), 4326) AS geography)
+       ) < :distancia
+ ORDER BY t.tram_codigo
+"""
+            ),
+            {
+                "pred_id": pred_id,
+                "fecha": fecha,
+                "excluir": excluir_tram_id,
+                "lon": float(lon),
+                "lat": float(lat),
+                "distancia": distancia_m,
+            },
+        )
+        return [str(f) for f in filas.scalars()]
 
     async def insertar_trampa(self, datos: dict[str, Any], ubicacion: dict[str, Any]) -> int:
         """trampa + ubicacion_trampa en una transacción (fn_trampa_valida, fn_ubicacion_trampa_valida)."""
