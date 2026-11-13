@@ -275,7 +275,19 @@ class ServicioTrampas:
         return await self.obtener(actor, tram_id)
 
     async def ubicaciones(self, actor: Actor, tram_id: int) -> list[e.UbicacionTrampa]:
-        raise NoImplementado("Ubicaciones")
+        """Historial de ubicaciones, de la más reciente a la más antigua (la vigente no tiene
+        ``ubic_fecha_fin``). Nunca se borra: reubicar cierra la anterior y agrega otra.
+
+        Solo se devuelven las ubicaciones en lotes visibles para el actor; si no queda ninguna -> 404
+        (no 403). No se usa ``trampa_por_id`` porque una trampa retirada (sin ubicación vigente)
+        también tiene historial.
+        """
+        filas = await self._repo.ubicaciones(tram_id, actor.usua_id)
+        if not filas:
+            raise NoEncontrado(
+                "La trampa no existe o no es visible para usted.", codigo="TRAMPA_NO_ENCONTRADA"
+            )
+        return [e.UbicacionTrampa(**fila) for fila in filas]
 
     async def reubicar(self, actor: Actor, tram_id: int, s: e.NuevaUbicacion) -> e.UbicacionTrampa:
         """Sin solape (EXCLUDE ubicacion_trampa_sin_solape). Invalida el paquete de campo."""

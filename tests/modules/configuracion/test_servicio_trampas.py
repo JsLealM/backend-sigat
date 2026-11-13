@@ -5,7 +5,7 @@ consultas. Así se prueban las decisiones del servicio (404, 409, 422, RN-004, R
 """
 
 from copy import deepcopy
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -35,6 +35,38 @@ TRAMPA = {
     "ultima_lectura_especimenes": None,
     "lote_sin_geometria": False,
     "con_ubicacion_vigente": True,
+}
+
+
+UBICACION_VIGENTE = {
+    "ubic_id": 4,
+    "tram_id": 7,
+    "pred_id": 1,
+    "lote_id": 2,
+    "ubic_fecha": date(2026, 11, 20),
+    "ubic_fecha_fin": None,
+    "tecn_id": 1,
+    "vigi_id": 1,
+    "ruta_id": None,
+    "retc_id": None,
+    "loca_id": None,
+    "arbo_id": None,
+    "ubic_long": Decimal("-73.35850"),
+    "ubic_lat": Decimal("5.53050"),
+    "ubic_alt": None,
+    "ubic_referencia": None,
+    "ubic_origen": "operacion",
+    "ubic_registrado_en": datetime(2026, 11, 20, 15, 0, tzinfo=UTC),
+}
+
+UBICACION_ANTERIOR = {
+    **UBICACION_VIGENTE,
+    "ubic_id": 3,
+    "lote_id": 1,
+    "ubic_fecha": date(2026, 11, 13),
+    "ubic_fecha_fin": date(2026, 11, 20),
+    "ubic_long": Decimal("-73.35950"),
+    "ubic_registrado_en": datetime(2026, 11, 13, 15, 0, tzinfo=UTC),
 }
 
 
@@ -75,6 +107,7 @@ class RepoFalso:
         self.insertadas: list[tuple[dict[str, Any], dict[str, Any]]] = []
         self.consultas_cercania: list[tuple[Any, ...]] = []
         self.actualizadas: list[tuple[int, dict[str, Any]]] = []
+        self.historial: list[dict[str, Any]] = [deepcopy(UBICACION_VIGENTE), deepcopy(UBICACION_ANTERIOR)]
 
     async def lote_visible(self, usua_id: int, lote_id: int) -> bool:
         return self.visible
@@ -115,6 +148,10 @@ class RepoFalso:
 
     async def actualizar_trampa(self, tram_id: int, cambios: dict[str, Any]) -> None:
         self.actualizadas.append((tram_id, cambios))
+
+    async def ubicaciones(self, tram_id: int, usua_id: int) -> list[dict[str, Any]]:
+        """El repositorio real ya filtra por ``fn_lotes_visibles``: no visible = sin filas."""
+        return self.historial if self.visible else []
 
 
 def servicio(repo: RepoFalso) -> ServicioTrampas:
@@ -307,3 +344,27 @@ async def test_actualizar_sin_cambios_devuelve_la_trampa_sin_escribir() -> None:
 
     assert trampa.tram_id == 7
     assert repo.actualizadas == []
+
+
+# ------------------------------------------------------------------ historial de ubicaciones
+@pytest.mark.regla
+async def test_historial_de_trampa_no_visible_da_404() -> None:
+    repo = RepoFalso()
+    repo.visible = False
+
+    with pytest.raises(NoEncontrado) as error:
+        await servicio(repo).ubicaciones(AGRONOMO, 99)
+
+    assert error.value.codigo == "TRAMPA_NO_ENCONTRADA"
+
+
+@pytest.mark.regla
+async def test_historial_conserva_la_ubicacion_anterior_cerrada() -> None:
+    repo = RepoFalso()
+
+    historial = await servicio(repo).ubicaciones(AGRONOMO, 7)
+
+    assert [u.ubic_id for u in historial] == [4, 3]
+    assert historial[0].ubic_fecha_fin is None
+    assert historial[1].ubic_fecha_fin == date(2026, 11, 20)
+    assert historial[1].lote_id == 1

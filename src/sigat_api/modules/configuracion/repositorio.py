@@ -426,8 +426,29 @@ UPDATE sigat.trampa t
             },
         )
 
-    async def ubicaciones(self, tram_id: int) -> list[dict[str, Any]]:
-        raise NoImplementado("Historial de ubicaciones")
+    async def ubicaciones(self, tram_id: int, usua_id: int) -> list[dict[str, Any]]:
+        """Historial de ``ubicacion_trampa``, la más reciente primero.
+
+        Solo las ubicaciones en lotes de ``fn_lotes_visibles``: si la trampa estuvo antes en un
+        predio ajeno, esa parte no se muestra (toda consulta de lotes se restringe por asignación).
+        Las filas heredadas sin lote (``ubic_origen = 'legado'``) tampoco: el contrato
+        ``UbicacionTrampa`` exige ``lote_id``.
+        """
+        filas = await self._con.execute(
+            text(
+                """
+SELECT ubic_id, tram_id, pred_id, lote_id, ubic_fecha, ubic_fecha_fin, tecn_id, vigi_id, ruta_id,
+       retc_id, loca_id, arbo_id, ubic_long, ubic_lat, ubic_alt, ubic_referencia, ubic_origen,
+       ubic_registrado_en
+  FROM sigat.ubicacion_trampa
+ WHERE tram_id = :tram_id
+   AND lote_id IN (SELECT lote_id FROM sigat.fn_lotes_visibles(:usua))
+ ORDER BY ubic_fecha DESC, ubic_id DESC
+"""
+            ),
+            {"tram_id": tram_id, "usua": usua_id},
+        )
+        return [dict(f) for f in filas.mappings()]
 
     async def reubicar(self, tram_id: int, nueva: dict[str, Any]) -> int:
         """Cierra la vigente (ubic_fecha_fin = nueva.ubic_fecha) e inserta la nueva."""
