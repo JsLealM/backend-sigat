@@ -56,6 +56,13 @@ _RESTRICCIONES: dict[str, tuple[type[ErrorDominio], str, str]] = {
         "La trampa ya tiene una ubicación en ese periodo.",
     ),
     "trampa_atra_id_fkey": (ReglaNegocio, "ATRAYENTE_INVALIDO", "El atrayente no existe."),
+    "trampa_esta_id_fkey": (ReglaNegocio, "ESTADO_INVALIDO", "El estado no existe."),
+    "trampa_tram_tecnico_estado_id_fkey": (ReglaNegocio, "TECNICO_INVALIDO", "El técnico no existe."),
+    "trampa_tram_tecnico_actualizacion_id_fkey": (
+        ReglaNegocio,
+        "TECNICO_INVALIDO",
+        "El técnico no existe.",
+    ),
     "ubicacion_trampa_tecn_id_fkey": (ReglaNegocio, "TECNICO_INVALIDO", "El técnico no existe."),
     "ubicacion_trampa_vigi_id_fkey": (ReglaNegocio, "VIGILANCIA_INVALIDA", "La vigilancia no existe."),
     "ubicacion_trampa_vigencia_valida": (

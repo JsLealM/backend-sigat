@@ -74,6 +74,7 @@ class RepoFalso:
         self.trampa: dict[str, Any] | None = deepcopy(TRAMPA)
         self.insertadas: list[tuple[dict[str, Any], dict[str, Any]]] = []
         self.consultas_cercania: list[tuple[Any, ...]] = []
+        self.actualizadas: list[tuple[int, dict[str, Any]]] = []
 
     async def lote_visible(self, usua_id: int, lote_id: int) -> bool:
         return self.visible
@@ -111,6 +112,9 @@ class RepoFalso:
 
     async def trampa_por_id(self, usua_id: int, tram_id: int) -> dict[str, Any] | None:
         return self.trampa
+
+    async def actualizar_trampa(self, tram_id: int, cambios: dict[str, Any]) -> None:
+        self.actualizadas.append((tram_id, cambios))
 
 
 def servicio(repo: RepoFalso) -> ServicioTrampas:
@@ -228,3 +232,78 @@ async def test_crear_fuera_del_lote_advierte_y_no_bloquea() -> None:
 
     assert trampa.dentro_del_lote is False
     assert len(repo.insertadas) == 1
+
+
+# ------------------------------------------------------------------ actualizar
+@pytest.mark.regla
+async def test_actualizar_trampa_no_visible_da_404_y_no_cambia_nada() -> None:
+    repo = RepoFalso()
+    repo.trampa = None
+
+    with pytest.raises(NoEncontrado) as error:
+        await servicio(repo).actualizar(AGRONOMO, 99, e.ActualizacionTrampa(atra_id=2))
+
+    assert error.value.codigo == "TRAMPA_NO_ENCONTRADA"
+    assert repo.actualizadas == []
+
+
+@pytest.mark.regla
+async def test_actualizar_atrayente_aplica_solo_ese_campo() -> None:
+    repo = RepoFalso()
+
+    trampa = await servicio(repo).actualizar(AGRONOMO, 7, e.ActualizacionTrampa(atra_id=2))
+
+    assert trampa.tram_id == 7
+    assert repo.actualizadas == [(7, {"atra_id": 2})]
+
+
+@pytest.mark.regla
+async def test_cambiar_estado_sin_tecnico_responsable_da_422() -> None:
+    repo = RepoFalso()
+
+    with pytest.raises(ReglaNegocio) as error:
+        await servicio(repo).actualizar(AGRONOMO, 7, e.ActualizacionTrampa(esta_id=2))
+
+    assert error.value.codigo == "TECNICO_ESTADO_REQUERIDO"
+    assert repo.actualizadas == []
+
+
+@pytest.mark.regla
+async def test_cambiar_estado_con_tecnico_responsable_se_aplica() -> None:
+    repo = RepoFalso()
+
+    await servicio(repo).actualizar(AGRONOMO, 7, e.ActualizacionTrampa(esta_id=2, tecn_id_estado=1))
+
+    assert repo.actualizadas == [(7, {"esta_id": 2, "tecn_id_estado": 1})]
+
+
+@pytest.mark.regla
+async def test_atrayente_nulo_explicito_da_422() -> None:
+    repo = RepoFalso()
+
+    with pytest.raises(ReglaNegocio) as error:
+        await servicio(repo).actualizar(AGRONOMO, 7, e.ActualizacionTrampa(atra_id=None))
+
+    assert error.value.codigo == "ATRAYENTE_INVALIDO"
+    assert repo.actualizadas == []
+
+
+@pytest.mark.regla
+async def test_estado_nulo_explicito_da_422() -> None:
+    repo = RepoFalso()
+
+    with pytest.raises(ReglaNegocio) as error:
+        await servicio(repo).actualizar(AGRONOMO, 7, e.ActualizacionTrampa(esta_id=None, tecn_id_estado=1))
+
+    assert error.value.codigo == "ESTADO_INVALIDO"
+    assert repo.actualizadas == []
+
+
+@pytest.mark.regla
+async def test_actualizar_sin_cambios_devuelve_la_trampa_sin_escribir() -> None:
+    repo = RepoFalso()
+
+    trampa = await servicio(repo).actualizar(AGRONOMO, 7, e.ActualizacionTrampa())
+
+    assert trampa.tram_id == 7
+    assert repo.actualizadas == []

@@ -386,7 +386,45 @@ VALUES (:tram_id, :pred_id, :lote_id, :ubic_fecha, :tecn_id, :vigi_id, :ruta_id,
         return int(tram_id)
 
     async def actualizar_trampa(self, tram_id: int, cambios: dict[str, Any]) -> None:
-        raise NoImplementado("Actualizar trampa")
+        """Aplica solo los campos presentes en ``cambios`` (atra_id, esta_id, tecn_id_estado).
+
+        Un cambio de estado fija ``tram_fecha_estado`` y ``tram_tecnico_estado_id``. Siempre se
+        actualiza ``tram_fecha_actualizacion`` con la fecha de hoy en la zona del predio (ADR-10).
+        ``tram_tecnico_actualizacion_id`` es el técnico de ESTA actualización: ``tecn_id_estado`` o
+        nulo si no vino (por ejemplo, solo cambió el atrayente); no se arrastra el anterior.
+        """
+        await self._con.execute(
+            text(
+                """
+UPDATE sigat.trampa t
+   SET atra_id = CASE WHEN CAST(:cambia_atrayente AS boolean)
+                      THEN CAST(:atra_id AS integer) ELSE t.atra_id END,
+       esta_id = CASE WHEN CAST(:cambia_estado AS boolean)
+                      THEN CAST(:esta_id AS integer) ELSE t.esta_id END,
+       tram_fecha_estado = CASE WHEN CAST(:cambia_estado AS boolean)
+                                THEN h.hoy ELSE t.tram_fecha_estado END,
+       tram_tecnico_estado_id = CASE WHEN CAST(:cambia_estado AS boolean)
+                                     THEN CAST(:tecnico AS integer) ELSE t.tram_tecnico_estado_id END,
+       tram_tecnico_actualizacion_id = CAST(:tecnico AS integer),
+       tram_fecha_actualizacion = h.hoy
+  FROM (SELECT COALESCE(
+                 (SELECT CAST(now() AT TIME ZONE p.pred_zona_horaria AS date)
+                    FROM sigat.ubicacion_trampa u
+                    JOIN sigat.predio p ON p.pred_id = u.pred_id
+                   WHERE u.tram_id = :tram_id AND u.ubic_fecha_fin IS NULL),
+                 CURRENT_DATE) AS hoy) h
+ WHERE t.tram_id = :tram_id
+"""
+            ),
+            {
+                "tram_id": tram_id,
+                "cambia_atrayente": "atra_id" in cambios,
+                "atra_id": cambios.get("atra_id"),
+                "cambia_estado": "esta_id" in cambios,
+                "esta_id": cambios.get("esta_id"),
+                "tecnico": cambios.get("tecn_id_estado"),
+            },
+        )
 
     async def ubicaciones(self, tram_id: int) -> list[dict[str, Any]]:
         raise NoImplementado("Historial de ubicaciones")

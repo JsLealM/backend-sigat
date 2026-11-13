@@ -251,7 +251,28 @@ class ServicioTrampas:
             )
 
     async def actualizar(self, actor: Actor, tram_id: int, s: e.ActualizacionTrampa) -> e.Trampa:
-        raise NoImplementado("Actualizar trampa")
+        """Cambia atrayente y estado (activa/inactiva). Código y tipo no se editan (RN-005).
+
+        Cambiar ``esta_id`` exige ``tecn_id_estado``, el técnico responsable del cambio (contrato)
+        -> 422 ``TECNICO_ESTADO_REQUERIDO``. Cuando viene, también queda como técnico de la última
+        actualización; si no viene (p. ej. solo cambia el atrayente) ese campo queda nulo, porque el
+        contrato no trae otro técnico. Quién hizo el cambio lo guarda la bitácora (``fn_auditar``).
+        """
+        await self.obtener(actor, tram_id)
+        cambios = s.model_dump(exclude_unset=True)
+        if "atra_id" in cambios and cambios["atra_id"] is None:
+            raise ReglaNegocio("El atrayente es obligatorio.", codigo="ATRAYENTE_INVALIDO")
+        if "esta_id" in cambios:
+            if cambios["esta_id"] is None:
+                raise ReglaNegocio("El estado es obligatorio.", codigo="ESTADO_INVALIDO")
+            if cambios.get("tecn_id_estado") is None:
+                raise ReglaNegocio(
+                    "Indique el técnico que cambia el estado de la trampa (tecn_id_estado).",
+                    codigo="TECNICO_ESTADO_REQUERIDO",
+                )
+        if cambios:
+            await self._repo.actualizar_trampa(tram_id, cambios)
+        return await self.obtener(actor, tram_id)
 
     async def ubicaciones(self, actor: Actor, tram_id: int) -> list[e.UbicacionTrampa]:
         raise NoImplementado("Ubicaciones")
