@@ -268,6 +268,24 @@ SELECT t.tram_id,
         )
         return int(valor) if valor is not None else None
 
+    async def lote_activo_en(self, lote_id: int, fecha: date) -> bool:
+        """El lote está activo entre ``lote_fecha_registro`` (inclusive) y ``lote_fecha_baja``
+        (primer día inactivo, exclusivo), según la definición de la tabla ``lote``."""
+        return bool(
+            await self._con.scalar(
+                text(
+                    """
+SELECT EXISTS (
+       SELECT 1 FROM sigat.lote
+        WHERE lote_id = :lote_id
+          AND lote_fecha_registro <= :fecha
+          AND (lote_fecha_baja IS NULL OR lote_fecha_baja > :fecha))
+"""
+                ),
+                {"lote_id": lote_id, "fecha": fecha},
+            )
+        )
+
     async def distancia_minima_trampas(self, pred_id: int, fecha: date) -> int | None:
         """RN-004: ``prog_distancia_min_trampas_m`` del programa vigente en ``fecha``.
 
@@ -330,8 +348,42 @@ SELECT t.tram_codigo
         return [str(f) for f in filas.scalars()]
 
     async def insertar_trampa(self, datos: dict[str, Any], ubicacion: dict[str, Any]) -> int:
-        """trampa + ubicacion_trampa en una transacción (fn_trampa_valida, fn_ubicacion_trampa_valida)."""
-        raise NoImplementado("Alta de trampa")
+        """trampa + ubicacion_trampa en una transacción (fn_trampa_valida, fn_ubicacion_trampa_valida).
+
+        El SAVEPOINT garantiza que no quede una trampa sin ubicación si la BD rechaza la segunda
+        fila. La trampa nace en estado ``activo`` con la fecha de hoy en la zona del predio (ADR-10).
+        """
+        async with self._con.begin_nested():
+            tram_id = await self._con.scalar(
+                text(
+                    """
+INSERT INTO sigat.trampa (tram_codigo, tipt_id, atra_id, esta_id, tram_fecha_registro,
+                          tram_tecnico_registro_id)
+SELECT :tram_codigo, :tipt_id, :atra_id, e.esta_id,
+       CAST(now() AT TIME ZONE p.pred_zona_horaria AS date), :tram_tecnico_registro_id
+  FROM sigat.estado_registro e
+  JOIN sigat.predio p ON p.pred_id = :pred_id
+ WHERE e.esta_descripcion = 'activo'
+RETURNING tram_id
+"""
+                ),
+                {**datos, "pred_id": ubicacion["pred_id"]},
+            )
+            if tram_id is None:
+                raise RuntimeError("Falta el estado 'activo' en estado_registro o el predio no existe")
+            await self._con.execute(
+                text(
+                    """
+INSERT INTO sigat.ubicacion_trampa (tram_id, pred_id, lote_id, ubic_fecha, tecn_id, vigi_id, ruta_id,
+                                    retc_id, loca_id, arbo_id, ubic_long, ubic_lat, ubic_alt,
+                                    ubic_referencia)
+VALUES (:tram_id, :pred_id, :lote_id, :ubic_fecha, :tecn_id, :vigi_id, :ruta_id,
+        :retc_id, :loca_id, :arbo_id, :ubic_long, :ubic_lat, :ubic_alt, :ubic_referencia)
+"""
+                ),
+                {**ubicacion, "tram_id": tram_id},
+            )
+        return int(tram_id)
 
     async def actualizar_trampa(self, tram_id: int, cambios: dict[str, Any]) -> None:
         raise NoImplementado("Actualizar trampa")

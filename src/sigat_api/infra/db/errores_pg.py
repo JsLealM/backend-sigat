@@ -55,11 +55,15 @@ _RESTRICCIONES: dict[str, tuple[type[ErrorDominio], str, str]] = {
         "UBICACION_SOLAPADA",
         "La trampa ya tiene una ubicación en ese periodo.",
     ),
+    "trampa_atra_id_fkey": (ReglaNegocio, "ATRAYENTE_INVALIDO", "El atrayente no existe."),
+    "ubicacion_trampa_tecn_id_fkey": (ReglaNegocio, "TECNICO_INVALIDO", "El técnico no existe."),
+    "ubicacion_trampa_vigi_id_fkey": (ReglaNegocio, "VIGILANCIA_INVALIDA", "La vigilancia no existe."),
     "ubicacion_trampa_vigencia_valida": (
         ReglaNegocio,
         "UBICACION_FECHA_INVALIDA",
         "La nueva ubicación debe empezar después de la ubicación vigente.",
     ),
+    "trampa_tram_tecnico_registro_id_fkey": (ReglaNegocio, "TECNICO_INVALIDO", "El técnico no existe."),
     "centro_acopio_cent_descripcion_key": (
         Conflicto,
         "DUPLICADO",
